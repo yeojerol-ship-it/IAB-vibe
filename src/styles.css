@@ -1,0 +1,831 @@
+/* ============================================================
+   TikTok GO – Webview Interaction Demo
+   Design tokens sourced from Figma node 773:37661
+   ============================================================ */
+
+/* === Reset ================================================================ */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+button {
+  font: inherit;
+  cursor: pointer;
+  border: none;
+  background: none;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+img {
+  display: block;
+  max-width: 100%;
+}
+
+/* === Design tokens ======================================================== */
+:root {
+  /* Brand */
+  --color-primary:        #fe2c55;
+  --color-primary-end:    #f5702f;
+  --color-primary-07:     rgba(254, 44, 85, 0.07);
+  --color-primary-12:     rgba(243, 71, 111, 0.12);
+  --color-cashback-text:  #e10543;
+  --color-cashback-border:#ffe7ec;
+
+  /* Text scale */
+  --color-text-1:  #000000;
+  --color-text-2:  rgba(0, 0, 0, 0.65);
+  --color-text-3:  rgba(0, 0, 0, 0.48);
+
+  /* Surfaces */
+  --color-surface:   #ffffff;
+  --color-grouped:   #f5f5f5;
+  --color-separator: rgba(0, 0, 0, 0.06);
+
+  /* Layout */
+  --status-bar-h:  47px;
+  --nav-bar-h:     44px;
+  --progress-h:    3px;
+  --bottom-bar-h:  86px;
+  --device-w:      390px;
+  --device-h:      844px;
+
+  /* Spacing (4-pt scale) */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 20px;
+  --sp-6: 24px;
+  --sp-7: 28px;
+  --sp-8: 32px;
+
+  /* Type */
+  --font: 'TikTok Sans', system-ui, -apple-system, 'Helvetica Neue', sans-serif;
+
+  /* Easing */
+  --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
+  --ease-out-expo:  cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* === Document root ======================================================== */
+html, body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #0f0f0f;
+  font-family: var(--font);
+  -webkit-font-smoothing: antialiased;
+}
+
+#root {
+  width: 100%;
+  height: 100%;
+}
+
+/* === App shell & device frame ============================================= */
+.app-shell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  min-height: 100dvh;
+  background: radial-gradient(ellipse at 50% 60%, #1a0a10 0%, #0a0a0a 70%);
+  padding: var(--sp-4);
+}
+
+.device-frame {
+  position: relative;
+  width:  var(--device-w);
+  height: var(--device-h);
+  border-radius: 44px;
+  overflow: hidden;
+  flex-shrink: 0;
+  background: var(--color-surface);
+  box-shadow:
+    0 0 0 1px rgba(255,255,255,0.08),
+    0 8px 32px rgba(0,0,0,0.6),
+    0 32px 80px rgba(0,0,0,0.4),
+    0 64px 120px rgba(0,0,0,0.25);
+  /* Scale down gracefully on very small viewports */
+  transform-origin: center center;
+}
+
+@media (max-height: 900px) {
+  .device-frame {
+    transform: scale(min(1, calc((100vh - 40px) / var(--device-h))));
+  }
+}
+@media (max-width: 430px) {
+  .device-frame {
+    transform: scale(min(1, calc((100vw - 24px) / var(--device-w))));
+  }
+}
+
+/* === Shared screen base =================================================== */
+.screen {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--color-surface);
+  font-family: var(--font);
+  overflow: hidden;
+  will-change: transform;
+}
+
+/* === Status bar (Figma PNG) =============================================== */
+.status-bar-img {
+  width: 100%;
+  height: var(--status-bar-h);
+  display: block;
+  flex-shrink: 0;
+  object-fit: cover;
+  object-position: center;
+  position: relative;
+  z-index: 10;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+/* === Navigation bar ======================================================= */
+.nav-bar {
+  height: var(--nav-bar-h);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 var(--sp-2);
+  flex-shrink: 0;
+  background: var(--color-surface);
+  position: relative;
+  z-index: 10;
+}
+
+.nav-btn {
+  width: 40px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-text-1);
+  border-radius: 12px;
+  transition: opacity 0.12s;
+}
+.nav-btn:active { opacity: 0.45; }
+
+.nav-btn svg { width: 24px; height: 24px; }
+
+.nav-center {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+/* Logo PNG — 79×36 @2× retina, display at half size */
+.nav-logo-png {
+  height: 18px;
+  width: auto;
+  display: block;
+}
+
+.nav-subtitle {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-text-3);
+  line-height: 1.3;
+  letter-spacing: 0;
+}
+
+/* === Progress bar ========================================================= */
+.progress-track {
+  height: var(--progress-h);
+  background: var(--color-primary-12);
+  flex-shrink: 0;
+  width: 100%;
+  position: relative;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  width: 0;
+  background: linear-gradient(to right, var(--color-primary) 79%, var(--color-primary-end));
+  border-radius: 0 2px 2px 0;
+  animation: progressFill 4.2s var(--ease-out-quart) forwards;
+}
+
+@keyframes progressFill {
+  0%   { width: 0%; }
+  60%  { width: 62%; }
+  85%  { width: 88%; }
+  100% { width: 100%; }
+}
+
+/* === POI detail screen ==================================================== */
+/* Shows the full-page TikTok POI screenshot (chrome baked into image).
+   No duplicate chrome rendered – the image IS the chrome.              */
+
+.poi-screen {
+  background: #f0ede8; /* fallback while image loads */
+}
+
+.poi-scroll-area {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
+  position: relative;
+}
+.poi-scroll-area::-webkit-scrollbar { display: none; }
+.poi-scroll-area { scrollbar-width: none; }
+
+/* 2× retina image → displayed at natural 390 px CSS width */
+.poi-bg {
+  width: 100%;
+  height: auto;
+  display: block;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+/* Transparent tap zone covering the Tickets shelf (with Buy buttons).
+   Image is 780×3688 native → 390×1844 CSS.
+   Tickets section (heading + 3 cards + "View all") ≈ y 280–745 px. */
+.poi-shelf-zone {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 280px;
+  height: 465px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* === Loading screen ======================================================= */
+.loading-screen { background: var(--color-surface); }
+
+.loading-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 0 var(--sp-4) 124px; /* offset upward toward center of content area */
+}
+
+/* Viator app icon — Figma 524:30427, 120×120 circle */
+.loading-icon-frame {
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  overflow: hidden;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  flex-shrink: 0;
+  animation: iconAppear 0.88s var(--ease-out-expo) 0.12s both;
+}
+
+@keyframes iconAppear {
+  from {
+    opacity: 0;
+    transform: translateY(22px) scale(0.99);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* Viator icon is 540×360 landscape – contain it inside the teal frame */
+.loading-icon-img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: center;
+  background: #186a68;
+}
+
+/* === Carousel ============================================================= */
+.carousel-window {
+  width: 267px;
+  height: 122px;   /* Matches Figma 121.68 px container */
+  margin-top: -12px;
+  border-radius: 20px;
+  overflow: hidden;
+  position: relative;
+  animation: carouselAppear 0.78s var(--ease-out-expo) 0.38s both;
+  /* Frosted glass backing */
+  background: rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+  /* Stronger top fade — outgoing lines vanish before the Viator logo */
+  mask-image: linear-gradient(
+    to bottom,
+    transparent  0%,
+    transparent 22%,
+    rgba(0,0,0,0.3) 32%,
+    rgba(0,0,0,0.65) 42%,
+    black        52%,
+    black        72%,
+    rgba(0,0,0,0.75) 88%,
+    rgba(0,0,0,0.45) 96%,
+    transparent 100%
+  );
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    transparent  0%,
+    transparent 22%,
+    rgba(0,0,0,0.3) 32%,
+    rgba(0,0,0,0.65) 42%,
+    black        52%,
+    black        72%,
+    rgba(0,0,0,0.75) 88%,
+    rgba(0,0,0,0.45) 96%,
+    transparent 100%
+  );
+}
+
+@keyframes carouselAppear {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.carousel-column {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 24px;              /* Matches Figma gap between text nodes */
+  padding: 0 16px;
+  will-change: transform;
+  transition: transform 0.58s var(--ease-out-quart);
+}
+
+/* Each item sits in a fixed-height slot to prevent layout reflow
+   when font-size transitions. Slot height = 32 px. */
+.carousel-item {
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  white-space: nowrap;
+  font-size: 15px;       /* TikTok Sans SemiBold, 15px = Figma "context" style */
+  font-weight: 600;
+  color: var(--color-text-2);
+  line-height: 1.3;
+  opacity: 0.75;
+  transition:
+    font-size   0.58s var(--ease-out-quart),
+    font-weight 0.58s var(--ease-out-quart),
+    color       0.58s var(--ease-out-quart),
+    opacity     0.58s var(--ease-out-quart);
+}
+
+/* Lines below center — hidden until they scroll into view */
+.carousel-item--incoming {
+  opacity: 0;
+}
+
+/* Lines above center — softened after passing through */
+.carousel-item--past {
+  opacity: 0.75;
+}
+
+/* Active (center) item – bold style for the focused carousel line */
+.carousel-item--active {
+  font-size: 20px;       /* Figma: 20px Bold */
+  font-weight: 700;
+  color: var(--color-text-1);
+  opacity: 1;
+}
+
+.carousel-item-label {
+  display: inline-block;
+}
+
+/* Final-line shimmer — angled light sweep across the full line */
+.carousel-item-label--shimmer {
+  background: linear-gradient(
+    110deg,
+    #000000 0%,
+    #000000 40%,
+    #aaaaaa 48%,
+    #aaaaaa 52%,
+    #000000 60%,
+    #000000 100%
+  );
+  background-size: 260% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+  animation: carouselTextShimmer 0.85s linear 1 forwards;
+}
+
+@keyframes carouselTextShimmer {
+  0%   { background-position: 130% center; }
+  100% { background-position: -30% center; }
+}
+
+/* === Webview screen ======================================================= */
+.webview-screen { background: var(--color-surface); }
+
+.webview-scroll-area {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
+  padding-top: 4px; /* Figma 524:30358 gap, reduced 8px */
+  transform-origin: top center;
+  animation: webviewRevealPop 0.85s var(--ease-out-expo) 0.06s both;
+}
+.webview-scroll-area::-webkit-scrollbar { display: none; }
+.webview-scroll-area { scrollbar-width: none; }
+
+@keyframes webviewRevealPop {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .webview-scroll-area {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Crop wrapper — clean Viator screenshot, no baked-in browser chrome */
+.webview-img-crop {
+  overflow: hidden;
+}
+
+.webview-content-img {
+  width: 100%;
+  height: auto;
+  display: block;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+/* === Webview bottom bar =================================================== */
+.webview-bottom-bar {
+  height: var(--bottom-bar-h);
+  background: var(--color-surface);
+  border-top: 1px solid var(--color-separator);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 var(--sp-4) 0 var(--sp-4);
+  flex-shrink: 0;
+  /* Start fully visible (translate 0) — animate UP from below on entrance.
+     Using clip-path avoids the translateY overflow-clip race condition.  */
+  animation: slideUpBar 0.52s var(--ease-out-expo) 0.28s both;
+}
+
+@keyframes slideUpBar {
+  from {
+    clip-path: inset(100% 0 0 0);
+    opacity: 0;
+  }
+  to {
+    clip-path: inset(0% 0 0 0);
+    opacity: 1;
+  }
+}
+
+.webview-nav-group {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-6);
+  transform: translateY(-8px);
+}
+
+.webview-icon-btn {
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-text-1);
+  border-radius: 12px;
+  transition: opacity 0.12s, transform 0.12s;
+}
+.webview-icon-btn:active {
+  opacity: 0.45;
+  transform: scale(0.90);
+}
+.webview-icon-btn svg { width: 24px; height: 24px; }
+
+.webview-nav-icon {
+  width: 24px;
+  height: 24px;
+  display: block;
+}
+
+/* === Cashback badge + perimeter SVG arc =================================== */
+
+.cashback-badge-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  transform: translateY(-8px);
+  transform-origin: right center;
+  animation: badgePop 1.55s var(--ease-out-expo) 0.42s both;
+}
+
+/* Pause → expand → hold through count-up → slower ease back to 1× */
+@keyframes badgePop {
+  0%   { transform: translateY(-8px) scale(1);    }
+  15%  { transform: translateY(-8px) scale(1);    }
+  28%  { transform: translateY(-8px) scale(1.06); }
+  68%  { transform: translateY(-8px) scale(1.06); }
+  100% { transform: translateY(-8px) scale(1);    }
+}
+
+/* Stretches to pill bounds; stroke follows actual border path */
+.cashback-glow-svg {
+  position: absolute;
+  inset: -1px;
+  width: calc(100% + 2px);
+  height: calc(100% + 2px);
+  pointer-events: none;
+  overflow: visible;
+  z-index: 2;
+}
+
+.cashback-glow-rect {
+  fill: none;
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+  stroke-linecap: butt;
+  /* Full perimeter — gradient rotation drives the 180° orbit */
+  stroke-dasharray: 360 0;
+  opacity: 0;
+
+  animation: badgeFade 3s linear 0.3s 1 forwards;
+}
+
+@keyframes badgeFade {
+  0%   { opacity: 0; }
+  22%  { opacity: 1; }
+  78%  { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+/* The pill badge itself — border-radius: 100px matches Figma */
+.cashback-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: linear-gradient(97.23deg, rgba(253, 147, 216, 0.07) 4.16%, rgba(254, 44, 85, 0.07) 87.93%);
+  border: 1px solid var(--color-cashback-border);
+  border-radius: 100px;
+  padding: 4px 10px 4px 10px;
+  color: var(--color-cashback-text);
+  line-height: 1.3;
+  transition: transform 0.12s var(--ease-out-quart), background 0.15s;
+}
+
+.cashback-badge:active {
+  transform: scale(0.95);
+  background: rgba(254, 44, 85, 0.12);
+}
+
+.cashback-copy {
+  display: inline-flex;
+  align-items: center;
+  gap: 0;
+  position: relative;
+}
+
+/* One-shot twinkle: soft brightness pulse on the label text */
+.cashback-copy--twinkle {
+  animation: labelGlimmer 0.45s var(--ease-out-expo) both;
+}
+
+@keyframes labelGlimmer {
+  0%   { filter: brightness(1); }
+  45%  { filter: brightness(1.08); }
+  100% { filter: brightness(1); }
+}
+
+
+.cashback-amount {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-cashback-text);
+  display: inline-block;
+}
+
+.cashback-amount--landed {
+  animation: amountLandTick 0.22s var(--ease-out-expo) both;
+}
+
+@keyframes amountLandTick {
+  0%   { transform: scale(1); }
+  35%  { transform: scale(1.14); }
+  100% { transform: scale(1); }
+}
+
+.cashback-text {
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--color-cashback-text);
+  margin-left: 3px;
+}
+
+.cashback-chevron {
+  width: 5px;
+  height: 10px;
+  flex-shrink: 0;
+  display: block;
+}
+
+/* === Popover scrim & sheet ================================================ */
+.popover-scrim {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding-bottom: 24px;
+  z-index: 100;
+  animation: scrimFadeIn 0.28s ease-out both;
+}
+
+@keyframes scrimFadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.popover-sheet {
+  width: 358px;
+  height: 372px;
+  background: #ffffff;
+  border-radius: 36px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  animation: sheetSlideUp 0.42s var(--ease-out-quart) both;
+}
+
+@keyframes sheetSlideUp {
+  from { transform: translateY(52px); opacity: 0; }
+  to   { transform: translateY(0);    opacity: 1; }
+}
+
+.popover-close-btn {
+  position: absolute;
+  top: 16px;
+  right: 13px;
+  width: 28px;
+  height: 28px;
+  border-radius: 100px;
+  background: var(--color-grouped);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-text-1);
+  z-index: 2;
+  transition: background 0.15s, transform 0.12s;
+}
+.popover-close-btn:active {
+  background: #d8d8d8;
+  transform: scale(0.90);
+}
+.popover-close-btn svg { width: 16px; height: 16px; }
+
+/* Illustration — Figma 799:27218 */
+.popover-art-frame {
+  width: 167.87px;
+  height: 173.85px;
+  margin: 31.15px auto 0;
+  overflow: hidden;
+  position: relative;
+  flex-shrink: 0;
+}
+
+.popover-art {
+  width: 100%;
+  height: 100%;
+  display: block;
+  background: transparent;
+}
+
+/* Text body — Figma 799:27204 */
+.popover-body {
+  padding: 0 var(--sp-8);
+  display: flex;
+  flex-direction: column;
+  text-align: center;
+  flex: 1;
+  align-items: center;
+}
+
+.popover-title {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--color-text-1);
+  line-height: 1.25;
+  max-width: 308px;
+}
+
+/* CTA — Figma 796:27024 */
+.popover-cta-area {
+  padding: var(--sp-3) var(--sp-7) var(--sp-7);
+  margin-top: auto;
+}
+
+.cta-primary-btn {
+  width: 100%;
+  height: 52px;
+  background: var(--color-primary);
+  color: #fff;
+  font-family: var(--font);
+  font-size: 16px;           /* Figma: App/Headline-Semibold 16px */
+  font-weight: 600;
+  line-height: 1;
+  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.12s var(--ease-out-quart), background 0.15s;
+}
+.cta-primary-btn:active {
+  transform: scale(0.97);
+  background: #d9204a;
+}
+
+/* === Screen-transition helpers ============================================ */
+
+/* POI screen – instant appear (first load) */
+.poi-screen {
+  animation: screenFadeIn 0.25s ease-out both;
+}
+
+/* Loading screen slides in from bottom edge */
+.loading-screen {
+  animation: screenSlideUp 0.48s var(--ease-out-expo) both;
+}
+
+@keyframes screenSlideUp {
+  from { opacity: 0; transform: translateY(32px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Webview — shell fades while content + chrome choreograph in */
+.webview-screen {
+  animation: screenFadeIn 0.2s ease-out both;
+}
+
+@keyframes screenFadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* === Accessibility: prefers-reduced-motion ================================ */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+  .carousel-column {
+    transition: none !important;
+  }
+  .cashback-copy--twinkle {
+    animation: none !important;
+    filter: none !important;
+  }
+}
+
+/* === Scrollbar hide (webview area) ======================================== */
+.webview-scroll-area::-webkit-scrollbar { display: none; }
+.webview-scroll-area { scrollbar-width: none; }
