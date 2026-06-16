@@ -75,8 +75,8 @@ const ChromaKeyVideo = memo(function ChromaKeyVideo({
         // Green-difference chroma key: background is ~rgb(92, 249, 74).
         // greenDiff = G – max(R,B). Pure green key = ~157. Feather range 80–120.
         const greenDiff = g - Math.max(r, b)
-        if (greenDiff > 25) {
-          const alpha = greenDiff > 60 ? 0 : Math.round((1 - (greenDiff - 25) / 35) * 255)
+        if (greenDiff > 3) {
+          const alpha = greenDiff > 25 ? 0 : Math.round((1 - (greenDiff - 3) / 22) * 255)
           d[i + 3] = alpha
         }
       }
