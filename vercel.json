@@ -7,6 +7,14 @@
     {
       "source": "/trip-proxy/:path*",
       "destination": "/api/trip-proxy/:path*"
+    },
+    {
+      "source": "/restapi/:path*",
+      "destination": "/api/trip-proxy/restapi/:path*"
+    },
+    {
+      "source": "/api/soa2/:path*",
+      "destination": "/api/trip-proxy/restapi/soa2/:path*"
     }
   ]
 }
