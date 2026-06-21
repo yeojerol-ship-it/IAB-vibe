@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, memo } from 'react'
+import { useState, useEffect, useRef, useCallback, memo, type ReactNode } from 'react'
 
 import poiDetailBg from './assets/poi-detail-bg.png'
 import viatorIcon from './assets/viator-icon.png'
@@ -32,22 +32,41 @@ const ChromaKeyVideo = memo(function ChromaKeyVideo({
   src,
   playTrigger,
   className,
+  loopTailSeconds,
+  loopSpeed = 0.85,
 }: {
   src: string
   playTrigger: unknown   // changing this value restarts playback
   className?: string
+  loopTailSeconds?: number // ping-pong loop the last N seconds after the intro
+  loopSpeed?: number       // 0–1, slows the ping-pong loop (1 = source speed)
 }) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  const rafRef    = useRef<number>(0)
+  const rafRef = useRef<number>(0)
+  const loopStartRef = useRef<number | null>(null)
+  const loopModeRef = useRef<'intro' | 'forward' | 'reverse'>('intro')
+  const lastFrameTsRef = useRef(0)
+
+  const syncLoopStart = useCallback((video: HTMLVideoElement) => {
+    if (!loopTailSeconds || !Number.isFinite(video.duration)) {
+      loopStartRef.current = null
+      return
+    }
+    loopStartRef.current = Math.max(0, video.duration - loopTailSeconds)
+  }, [loopTailSeconds])
 
   // Restart video whenever playTrigger changes
   useEffect(() => {
     const v = videoRef.current
     if (!v) return
+    loopModeRef.current = 'intro'
+    lastFrameTsRef.current = 0
+    v.playbackRate = 1
     v.currentTime = 0
+    syncLoopStart(v)
     v.play().catch(() => {/* autoplay blocked */})
-  }, [playTrigger])
+  }, [playTrigger, syncLoopStart])
 
   // Frame loop: draw → chroma-key → paint canvas
   useEffect(() => {
@@ -61,11 +80,7 @@ const ChromaKeyVideo = memo(function ChromaKeyVideo({
     const W = canvas.width
     const H = canvas.height
 
-    const renderFrame = () => {
-      if (video.paused || video.ended || video.readyState < 2) {
-        rafRef.current = requestAnimationFrame(renderFrame)
-        return
-      }
+    const paintFrame = () => {
       ctx.drawImage(video, 0, 0, W, H)
       const frame = ctx.getImageData(0, 0, W, H)
       const d = frame.data
@@ -81,23 +96,66 @@ const ChromaKeyVideo = memo(function ChromaKeyVideo({
         }
       }
       ctx.putImageData(frame, 0, 0)
+    }
+
+    const advancePingPong = (ts: number) => {
+      const loopStart = loopStartRef.current
+      if (loopStart == null || !Number.isFinite(video.duration)) return
+
+      const loopEnd = video.duration - 1 / 60
+      const dt = lastFrameTsRef.current
+        ? Math.min((ts - lastFrameTsRef.current) / 1000, 0.05)
+        : 0
+      lastFrameTsRef.current = ts
+
+      if (loopModeRef.current === 'intro' && video.currentTime >= loopStart) {
+        loopModeRef.current = 'forward'
+        video.playbackRate = loopSpeed
+      }
+
+      if (loopModeRef.current === 'forward' && video.currentTime >= loopEnd) {
+        loopModeRef.current = 'reverse'
+        video.pause()
+      }
+
+      if (loopModeRef.current === 'reverse') {
+        video.currentTime = Math.max(loopStart, video.currentTime - dt * loopSpeed)
+        if (video.currentTime <= loopStart + 1 / 60) {
+          loopModeRef.current = 'forward'
+          video.playbackRate = loopSpeed
+          video.play().catch(() => {/* autoplay blocked */})
+        }
+      }
+    }
+
+    const renderFrame = (ts: number) => {
+      if (video.readyState >= 2) {
+        advancePingPong(ts)
+        if (!video.paused || loopModeRef.current === 'reverse') {
+          paintFrame()
+        }
+      }
       rafRef.current = requestAnimationFrame(renderFrame)
     }
 
+    const onMetadata = () => syncLoopStart(video)
     const onPlay = () => {
       cancelAnimationFrame(rafRef.current)
+      lastFrameTsRef.current = 0
       rafRef.current = requestAnimationFrame(renderFrame)
     }
-    const onEnd  = () => cancelAnimationFrame(rafRef.current)
 
-    video.addEventListener('play',  onPlay)
-    video.addEventListener('ended', onEnd)
+    video.addEventListener('loadedmetadata', onMetadata)
+    video.addEventListener('play', onPlay)
+    if (video.readyState >= 1) syncLoopStart(video)
+    if (!video.paused) onPlay()
+
     return () => {
-      video.removeEventListener('play',  onPlay)
-      video.removeEventListener('ended', onEnd)
+      video.removeEventListener('loadedmetadata', onMetadata)
+      video.removeEventListener('play', onPlay)
       cancelAnimationFrame(rafRef.current)
     }
-  }, [])
+  }, [syncLoopStart, loopSpeed])
 
   return (
     <>
@@ -171,11 +229,11 @@ function IconChevronRight() {
 }
 
 function IconNavBack() {
-  return <img src={navBackIcon} alt="" aria-hidden="true" width={24} height={24} className="webview-nav-icon" />
+  return <img src={navBackIcon} alt="" aria-hidden="true" width={20} height={20} className="webview-nav-icon" />
 }
 
 function IconNavForward() {
-  return <img src={navForwardIcon} alt="" aria-hidden="true" width={24} height={24} className="webview-nav-icon" />
+  return <img src={navForwardIcon} alt="" aria-hidden="true" width={20} height={20} className="webview-nav-icon" />
 }
 
 // ─── Status Bar (Figma PNG — exact 390×47 export) ────────────────────────────
@@ -200,34 +258,53 @@ interface NavBarProps {
   leftIcon?: 'back' | 'close'
   onLeftTap?: () => void
   subtitle?: string
+  title?: string
+  showBrand?: boolean
+  showMore?: boolean
+  centerBadge?: ReactNode
+  scrolled?: boolean
+  compact?: boolean
 }
 
-function NavBar({ leftIcon = 'back', onLeftTap, subtitle }: NavBarProps) {
+function NavBar({
+  leftIcon = 'back',
+  onLeftTap,
+  subtitle,
+  title,
+  showBrand = true,
+  showMore = true,
+  centerBadge,
+  scrolled = false,
+  compact = false,
+}: NavBarProps) {
   return (
-    <div className="nav-bar">
+    <div className={`nav-bar${centerBadge ? ' nav-bar--with-badge' : ''}${scrolled ? ' nav-bar--scrolled' : ''}${compact ? ' nav-bar--compact' : ''}${!showBrand && !showMore && !title && !centerBadge ? ' nav-bar--minimal' : ''}`}>
       <button className="nav-btn nav-btn-left" onClick={onLeftTap}
               aria-label={leftIcon === 'close' ? 'Close' : 'Back'}>
         {leftIcon === 'close' ? <IconClose /> : <IconBack />}
       </button>
 
-      <div className="nav-center">
-        <TikTokGoLogo />
-        {subtitle && <span className="nav-subtitle">{subtitle}</span>}
-      </div>
+      {(showBrand || subtitle || title || centerBadge) && (
+        <div className={`nav-center${centerBadge ? ' nav-center--with-badge' : ''}`}>
+          {title ? (
+            <span className="nav-title">{title}</span>
+          ) : (
+            <>
+              {showBrand && <TikTokGoLogo />}
+              {subtitle && <span className="nav-subtitle">{subtitle}</span>}
+            </>
+          )}
+          {centerBadge}
+        </div>
+      )}
 
-      <button className="nav-btn nav-btn-right" aria-label="More options">
-        <IconMore />
-      </button>
-    </div>
-  )
-}
-
-// ─── Progress Bar ─────────────────────────────────────────────────────────────
-
-function ProgressBar({ runKey }: { runKey: number }) {
-  return (
-    <div className="progress-track" role="progressbar" aria-label="Page loading">
-      <div key={runKey} className="progress-fill" />
+      {showMore ? (
+        <button className="nav-btn nav-btn-right" aria-label="More options">
+          <IconMore />
+        </button>
+      ) : (
+        <div className="nav-btn-spacer" aria-hidden="true" />
+      )}
     </div>
   )
 }
@@ -263,11 +340,10 @@ function PoiScreen({ onShelfTap }: { onShelfTap: () => void }) {
 
 const CAROUSEL_LINES = [
   'Best deal found',
-  'Cashback activated',
-  'More savings await',
+  '20% off at checkout',
+  'Opening Viator for you',
 ]
 
-// Fixed item slot height + gap to keep column layout stable as font transitions
 const SLOT_H = 32
 const GAP_PX = 24
 const CONTAINER_H = 122
@@ -277,9 +353,8 @@ function computeCarouselY(activeIdx: number): number {
   return CONTAINER_H / 2 - activeCenter
 }
 
-function LoadingScreen({ carouselIndex, runKey, shimmer }: {
+function LoadingScreen({ carouselIndex, shimmer }: {
   carouselIndex: number
-  runKey: number
   shimmer: boolean
 }) {
   const translateY = computeCarouselY(carouselIndex)
@@ -287,8 +362,7 @@ function LoadingScreen({ carouselIndex, runKey, shimmer }: {
   return (
     <div className="screen loading-screen">
       <StatusBar />
-      <NavBar leftIcon="close" subtitle="You are visiting: viator.com" />
-      <ProgressBar runKey={runKey} />
+      <NavBar leftIcon="close" showBrand={false} showMore={false} />
 
       <div className="loading-body">
         <div className="loading-icon-frame">
@@ -329,9 +403,200 @@ function LoadingScreen({ carouselIndex, runKey, shimmer }: {
   )
 }
 
-// ─── Webview Screen ───────────────────────────────────────────────────────────
+// ─── Third-party page (live Trip.com + screenshot fallback) ─────────────────
+
+const TRIP_COM_PATH =
+  '/travel-guide/attraction/park-county/yellowstone-national-park-89744?curr=SGD&locale=en-SG&poiType=3&ext-searchpage=1'
+
+/** Proxied with iPhone UA so Trip.com serves H5 mobile HTML at 390px */
+const TRIP_COM_URL = `/trip-proxy${TRIP_COM_PATH}`
+
+function readMaxScrollTop(doc: Document, win: Window, bodyTopBaseline: number): number {
+  const root = doc.scrollingElement ?? doc.documentElement
+  let max = root.scrollTop
+  doc.querySelectorAll('*').forEach((el) => {
+    if (el instanceof HTMLElement && el.scrollTop > max) max = el.scrollTop
+  })
+  const bodyShift = Math.max(0, bodyTopBaseline - doc.body.getBoundingClientRect().top)
+  max = Math.max(max, bodyShift)
+  const vv = win.visualViewport
+  if (vv) max = Math.max(max, vv.pageTop, vv.offsetTop)
+  return max
+}
+
+function ThirdPartyFrame({
+  onScroll,
+  onWheelScroll,
+}: {
+  onScroll?: (scrollTop: number) => void
+  onWheelScroll?: (deltaY: number) => void
+}) {
+  const [useFallback, setUseFallback] = useState(false)
+  const iframeRef = useRef<HTMLIFrameElement>(null)
+  const detachScrollRef = useRef<(() => void) | null>(null)
+  const pollRafRef = useRef(0)
+  const rebindTimersRef = useRef<ReturnType<typeof setTimeout>[]>([])
+
+  const bindIframeScroll = useCallback(() => {
+    detachScrollRef.current?.()
+    detachScrollRef.current = null
+    cancelAnimationFrame(pollRafRef.current)
+
+    const iframe = iframeRef.current
+    if (!iframe) return
+
+    let doc: Document | null = null
+    try {
+      doc = iframe.contentDocument
+    } catch {
+      return
+    }
+    if (!doc) return
+    const win = iframe.contentWindow
+    if (!win) return
+
+    const bodyTopBaseline = doc.body.getBoundingClientRect().top
+    let lastPolled = -1
+
+    const emitScroll = (scrollTop: number) => {
+      onScroll?.(scrollTop)
+    }
+
+    const poll = () => {
+      const top = readMaxScrollTop(doc!, win, bodyTopBaseline)
+      if (top !== lastPolled) {
+        lastPolled = top
+        emitScroll(top)
+      }
+      pollRafRef.current = requestAnimationFrame(poll)
+    }
+
+    const handleScroll = (e: Event) => {
+      const top =
+        e.target instanceof Element
+          ? Math.max(e.target.scrollTop, readMaxScrollTop(doc!, win, bodyTopBaseline))
+          : readMaxScrollTop(doc!, win, bodyTopBaseline)
+      emitScroll(top)
+    }
+
+    const handleWheel = (e: WheelEvent) => {
+      onWheelScroll?.(e.deltaY)
+    }
+
+    let lastTouchY = 0
+    const handleTouchStart = (e: TouchEvent) => {
+      lastTouchY = e.touches[0]?.clientY ?? 0
+    }
+    const handleTouchMove = (e: TouchEvent) => {
+      const y = e.touches[0]?.clientY
+      if (y == null || !lastTouchY) return
+      onWheelScroll?.(lastTouchY - y)
+      lastTouchY = y
+    }
+    const handleTouchEnd = () => {
+      lastTouchY = 0
+    }
+
+    doc.addEventListener('scroll', handleScroll, { capture: true, passive: true })
+    doc.addEventListener('wheel', handleWheel, { capture: true, passive: true })
+    win.addEventListener('scroll', handleScroll, { capture: true, passive: true })
+    win.addEventListener('wheel', handleWheel, { capture: true, passive: true })
+    doc.addEventListener('touchstart', handleTouchStart, { capture: true, passive: true })
+    doc.addEventListener('touchmove', handleTouchMove, { capture: true, passive: true })
+    doc.addEventListener('touchend', handleTouchEnd, { capture: true, passive: true })
+    win.visualViewport?.addEventListener('scroll', handleScroll, { passive: true })
+    pollRafRef.current = requestAnimationFrame(poll)
+
+    detachScrollRef.current = () => {
+      cancelAnimationFrame(pollRafRef.current)
+      doc!.removeEventListener('scroll', handleScroll, { capture: true })
+      doc!.removeEventListener('wheel', handleWheel, { capture: true })
+      win.removeEventListener('scroll', handleScroll, { capture: true })
+      win.removeEventListener('wheel', handleWheel, { capture: true })
+      doc!.removeEventListener('touchstart', handleTouchStart, { capture: true })
+      doc!.removeEventListener('touchmove', handleTouchMove, { capture: true })
+      doc!.removeEventListener('touchend', handleTouchEnd, { capture: true })
+      win.visualViewport?.removeEventListener('scroll', handleScroll)
+    }
+  }, [onScroll, onWheelScroll])
+
+  const scheduleIframeScrollBind = useCallback(() => {
+    rebindTimersRef.current.forEach(clearTimeout)
+    rebindTimersRef.current = []
+    bindIframeScroll()
+    for (const delay of [400, 1200, 3000]) {
+      rebindTimersRef.current.push(setTimeout(bindIframeScroll, delay))
+    }
+  }, [bindIframeScroll])
+
+  useEffect(() => {
+    if (useFallback) return
+
+    const iframe = iframeRef.current
+    if (!iframe) return
+
+    const onLoad = () => scheduleIframeScrollBind()
+    iframe.addEventListener('load', onLoad)
+    if (iframe.contentDocument?.readyState === 'complete') {
+      scheduleIframeScrollBind()
+    }
+
+    return () => {
+      iframe.removeEventListener('load', onLoad)
+      rebindTimersRef.current.forEach(clearTimeout)
+      rebindTimersRef.current = []
+      detachScrollRef.current?.()
+      cancelAnimationFrame(pollRafRef.current)
+    }
+  }, [scheduleIframeScrollBind, useFallback])
+
+  useEffect(() => () => {
+    rebindTimersRef.current.forEach(clearTimeout)
+    detachScrollRef.current?.()
+    cancelAnimationFrame(pollRafRef.current)
+  }, [])
+
+  if (useFallback) {
+    return (
+      <div
+        className="webview-scroll-area"
+        onScroll={(e) => onScroll?.(e.currentTarget.scrollTop)}
+      >
+        <div className="webview-img-crop">
+          <img
+            src={webviewContent}
+            alt="Yellowstone National Park – Trip.com booking page"
+            className="webview-content-img"
+            draggable={false}
+          />
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div
+      className="webview-scroll-area webview-scroll-area--live"
+      onWheel={(e) => onWheelScroll?.(e.deltaY)}
+    >
+      <div className="webview-iframe-viewport">
+        <iframe
+          ref={iframeRef}
+          src={TRIP_COM_URL}
+          className="webview-iframe"
+          title="Trip.com – Yellowstone National Park"
+          onError={() => setUseFallback(true)}
+        />
+      </div>
+    </div>
+  )
+}
+
+type WebviewLayoutOption = 1 | 2
 
 interface WebviewScreenProps {
+  layoutOption: WebviewLayoutOption
+  preloading?: boolean
   onCashbackTap: () => void
   showPopover: boolean
   onClosePopover: () => void
@@ -339,17 +604,24 @@ interface WebviewScreenProps {
   glowKey: number
 }
 
-// ─── Cashback badge — SVG perimeter arc (even speed on pill shape) ───────────
+// ─── Cashback badge — continuous gradient arc (Figma 1028:24340) ─────────────
 
-interface CashbackBadgeProps { glowKey: number; onClick: () => void }
+interface CashbackBadgeProps {
+  glowKey: number
+  onClick: () => void
+  placement?: 'bottom' | 'nav'
+}
+
+const ARC_LOOP_DURATION_S = 3.1
+const ARC_FADE_DELAY_MS = 3000
 
 const ARC_GRAD_STOPS = (
   <>
-    <stop offset="0%"   stopColor="#FAE0F1" stopOpacity="0" />
-    <stop offset="18%"  stopColor="#FAE0F1" />
-    <stop offset="50%"  stopColor="#ED658B" />
-    <stop offset="82%"  stopColor="#FAE0F1" />
-    <stop offset="100%" stopColor="#FAE0F1" stopOpacity="0" />
+    <stop offset="0%" stopColor="#FDF2F8" stopOpacity="0" />
+    <stop offset="10%" stopColor="#FDF2F8" stopOpacity="0.45" />
+    <stop offset="50%" stopColor="#F08BA8" stopOpacity="0.85" />
+    <stop offset="90%" stopColor="#FDF2F8" stopOpacity="0.45" />
+    <stop offset="100%" stopColor="#FDF2F8" stopOpacity="0" />
   </>
 )
 
@@ -382,56 +654,123 @@ function useCashbackCountUp(target: number, duration: number, delay: number) {
   return { count, landed }
 }
 
-function CashbackBadge({ glowKey, onClick }: CashbackBadgeProps) {
-  const gradId = `badge-arc-${glowKey}`
-  const { count: amount, landed } = useCashbackCountUp(50, 900, 350)
+function CashbackBadge({ glowKey, onClick, placement = 'bottom' }: CashbackBadgeProps) {
+  const badgeRef = useRef<HTMLButtonElement>(null)
+  const gradientRef = useRef<SVGLinearGradientElement>(null)
+  const arcAngleRef = useRef(0)
+  const arcRafRef = useRef(0)
+  const { count, landed } = useCashbackCountUp(20, 900, 350)
+  const [pillSize, setPillSize] = useState({ w: 180, h: 28 })
   const [arcComplete, setArcComplete] = useState(false)
+  const [arcSoftened, setArcSoftened] = useState(false)
+  const gradId = `badge-arc-${glowKey}`
+
+  useEffect(() => {
+    const el = badgeRef.current
+    if (!el) return
+
+    const measure = () => {
+      const { width, height } = el.getBoundingClientRect()
+      setPillSize({
+        w: Math.max(Math.round(width), 1),
+        h: Math.max(Math.round(height), 1),
+      })
+    }
+
+    measure()
+    const ro = new ResizeObserver(measure)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [glowKey])
 
   useEffect(() => {
     setArcComplete(false)
-    // Arc: begin 0.3s, dur 3s → fades out at 3.3s
     const t = setTimeout(() => setArcComplete(true), 3300)
     return () => clearTimeout(t)
   }, [glowKey])
 
+  useEffect(() => {
+    setArcSoftened(false)
+    const t = setTimeout(() => setArcSoftened(true), ARC_FADE_DELAY_MS)
+    return () => clearTimeout(t)
+  }, [glowKey])
+
+  const inset = 0.75
+  const rx = Math.max((pillSize.h - inset * 2) / 2, 0)
+  const cx = pillSize.w / 2
+  const cy = pillSize.h / 2
+
+  // Continuous linear rotation — avoids the snap-back stutter at each SMIL loop
+  useEffect(() => {
+    if (arcSoftened) {
+      cancelAnimationFrame(arcRafRef.current)
+      return
+    }
+
+    arcAngleRef.current = 0
+    let lastTs = 0
+    const degPerSec = 360 / ARC_LOOP_DURATION_S
+
+    const tick = (ts: number) => {
+      const dt = lastTs ? Math.min((ts - lastTs) / 1000, 0.05) : 0
+      lastTs = ts
+      arcAngleRef.current += degPerSec * dt
+      gradientRef.current?.setAttribute(
+        'gradientTransform',
+        `rotate(${arcAngleRef.current} ${cx} ${cy})`,
+      )
+      arcRafRef.current = requestAnimationFrame(tick)
+    }
+
+    arcRafRef.current = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(arcRafRef.current)
+  }, [cx, cy, arcSoftened, glowKey])
+
   return (
-    <div key={glowKey} className="cashback-badge-wrap">
-      <svg className="cashback-glow-svg" viewBox="0 0 200 30" preserveAspectRatio="none" aria-hidden="true">
+    <div
+      key={glowKey}
+      className={`cashback-badge-wrap${placement === 'nav' ? ' cashback-badge-wrap--nav' : ''}`}
+    >
+      <svg
+        className={`cashback-glow-svg${arcSoftened ? ' cashback-glow-svg--softened' : ''}`}
+        viewBox={`0 0 ${pillSize.w} ${pillSize.h}`}
+        preserveAspectRatio="none"
+        aria-hidden="true"
+      >
         <defs>
-          {/* Full-ring gradient — simple from/to rotation, no path-sync needed */}
-          <linearGradient id={gradId} gradientUnits="userSpaceOnUse" x1="20" y1="15" x2="180" y2="15">
+          <linearGradient
+            ref={gradientRef}
+            id={gradId}
+            gradientUnits="userSpaceOnUse"
+            x1="0"
+            y1={cy}
+            x2={pillSize.w}
+            y2={cy}
+          >
             {ARC_GRAD_STOPS}
-            <animateTransform
-              attributeName="gradientTransform"
-              type="rotate"
-              from="0 100 15"
-              to="180 100 15"
-              dur="3s"
-              begin="0.3s"
-              fill="freeze"
-            />
           </linearGradient>
         </defs>
         <rect
           className="cashback-glow-rect"
-          x="0.75"
-          y="0.75"
-          width="198.5"
-          height="28.5"
-          rx="14.25"
-          ry="14.25"
+          x={inset}
+          y={inset}
+          width={Math.max(pillSize.w - inset * 2, 0)}
+          height={Math.max(pillSize.h - inset * 2, 0)}
+          rx={rx}
+          ry={rx}
           pathLength="360"
           stroke={`url(#${gradId})`}
         />
       </svg>
       <button
-        className="cashback-badge"
+        ref={badgeRef}
+        className={`cashback-badge${placement === 'nav' ? ' cashback-badge--nav' : ''}`}
         onClick={onClick}
-        aria-label="$50 Cashback activated — tap for details"
+        aria-label="20% off at checkout — tap for details"
       >
         <span className={`cashback-copy${arcComplete ? ' cashback-copy--twinkle' : ''}`}>
-          <span className={`cashback-amount${landed ? ' cashback-amount--landed' : ''}`}>${amount}</span>
-          <span className="cashback-text">Cashback activated</span>
+          <span className={`cashback-amount${landed ? ' cashback-amount--landed' : ''}`}>{count}%</span>
+          <span className="cashback-text">off at checkout</span>
         </span>
         <IconChevronRight />
       </button>
@@ -439,41 +778,152 @@ function CashbackBadge({ glowKey, onClick }: CashbackBadgeProps) {
   )
 }
 
-// ─── Viator page screenshot scrollable view ───────────────────────────────────
-// Clean Viator search results screenshot — 1170×2227 @3× (390 CSS px wide).
+// ─── Webview Screen ───────────────────────────────────────────────────────────
 
-function ViatorFrame() {
+const POPOVER_EXIT_MS = 225
+
+function OptionSegment({
+  value,
+  onChange,
+}: {
+  value: WebviewLayoutOption
+  onChange: (value: WebviewLayoutOption) => void
+}) {
   return (
-    <div className="webview-scroll-area">
-      <div className="webview-img-crop">
-        <img
-          src={webviewContent}
-          alt="Viator – Guided Yellowstone Tour"
-          className="webview-content-img"
-          draggable={false}
-        />
-      </div>
+    <div className="option-segment" role="tablist" aria-label="Webview layout">
+      <button
+        type="button"
+        role="tab"
+        aria-selected={value === 1}
+        className={`option-segment-btn${value === 1 ? ' option-segment-btn--active' : ''}`}
+        onClick={() => onChange(1)}
+      >
+        Option 1
+      </button>
+      <button
+        type="button"
+        role="tab"
+        aria-selected={value === 2}
+        className={`option-segment-btn${value === 2 ? ' option-segment-btn--active' : ''}`}
+        onClick={() => onChange(2)}
+      >
+        Option 2
+      </button>
     </div>
   )
 }
 
 function WebviewScreen({
+  layoutOption,
+  preloading = false,
   onCashbackTap,
   showPopover,
   onClosePopover,
   onClose,
   glowKey,
 }: WebviewScreenProps) {
+  const [popoverVisible, setPopoverVisible] = useState(false)
+  const [popoverOpen, setPopoverOpen] = useState(false)
+  const [navScrolled, setNavScrolled] = useState(false)
+  const [navCompact, setNavCompact] = useState(false)
+  const lastScrollTopRef = useRef(0)
+  const syntheticScrollRef = useRef(0)
+  const isClosingRef = useRef(false)
+  const exitTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+
+  const handleContentScroll = useCallback((scrollTop: number) => {
+    const lastScrollTop = lastScrollTopRef.current
+    const delta = scrollTop - lastScrollTop
+
+    syntheticScrollRef.current = scrollTop
+    setNavScrolled(scrollTop > 0)
+
+    if (scrollTop <= 0) {
+      setNavCompact(false)
+    } else if (delta > 2) {
+      setNavCompact(true)
+    } else if (delta < -2) {
+      setNavCompact(false)
+    }
+
+    lastScrollTopRef.current = scrollTop
+  }, [])
+
+  const handleContentWheel = useCallback((deltaY: number) => {
+    if (deltaY > 0) {
+      syntheticScrollRef.current += Math.abs(deltaY)
+      setNavScrolled(true)
+      setNavCompact(true)
+    } else if (deltaY < 0) {
+      syntheticScrollRef.current = Math.max(0, syntheticScrollRef.current - Math.abs(deltaY))
+      setNavCompact(false)
+      if (syntheticScrollRef.current <= 0) {
+        setNavScrolled(false)
+      }
+    }
+  }, [])
+
+  useEffect(() => {
+    setNavScrolled(false)
+    setNavCompact(false)
+    lastScrollTopRef.current = 0
+    syntheticScrollRef.current = 0
+  }, [glowKey, layoutOption])
+
+  const dismissPopover = useCallback(() => {
+    if (isClosingRef.current) return
+    isClosingRef.current = true
+    setPopoverOpen(false)
+    exitTimerRef.current = setTimeout(() => {
+      setPopoverVisible(false)
+      isClosingRef.current = false
+      onClosePopover()
+    }, POPOVER_EXIT_MS)
+  }, [onClosePopover])
+
+  useEffect(() => {
+    if (!showPopover) return
+    isClosingRef.current = false
+    setPopoverVisible(true)
+    const raf = requestAnimationFrame(() => {
+      requestAnimationFrame(() => setPopoverOpen(true))
+    })
+    return () => cancelAnimationFrame(raf)
+  }, [showPopover])
+
+  useEffect(() => () => {
+    if (exitTimerRef.current) clearTimeout(exitTimerRef.current)
+  }, [])
+
   return (
-    <div className="screen webview-screen">
-      <StatusBar />
-      <NavBar leftIcon="close" onLeftTap={onClose} subtitle="You are visiting: viator.com" />
+    <div className={`screen webview-screen${layoutOption === 2 ? ' webview-screen--option2' : ''}${preloading ? ' webview-screen--preloading' : ''}`}>
+      {layoutOption === 2 ? (
+        <header className={`webview-header-option2${navCompact ? ' webview-header-option2--compact' : ''}`}>
+          <StatusBar />
+          <NavBar
+            leftIcon="close"
+            onLeftTap={onClose}
+            title="Viator"
+            showBrand={false}
+            scrolled={navScrolled}
+            compact={navCompact}
+            centerBadge={
+              !preloading ? (
+                <CashbackBadge glowKey={glowKey} onClick={onCashbackTap} placement="nav" />
+              ) : undefined
+            }
+          />
+        </header>
+      ) : (
+        <>
+          <StatusBar />
+          <NavBar leftIcon="close" onLeftTap={onClose} subtitle="viator.com" scrolled={navScrolled} compact={navCompact} />
+        </>
+      )}
 
-      {/* Live iframe — actual Viator product page with fallback */}
-      <ViatorFrame />
+      <ThirdPartyFrame onScroll={handleContentScroll} onWheelScroll={handleContentWheel} />
 
-      {/* Bottom navigation bar */}
-      <div className="webview-bottom-bar">
+      <div className={`webview-bottom-bar${layoutOption === 2 ? ' webview-bottom-bar--center' : ''}`}>
         <div className="webview-nav-group">
           <button className="webview-icon-btn" aria-label="Go back">
             <IconNavBack />
@@ -483,43 +933,65 @@ function WebviewScreen({
           </button>
         </div>
 
-        <CashbackBadge glowKey={glowKey} onClick={onCashbackTap} />
+        {layoutOption === 1 && !preloading && (
+          <CashbackBadge glowKey={glowKey} onClick={onCashbackTap} />
+        )}
       </div>
 
       {/* Cashback explanation popover */}
-      {showPopover && (
+      {popoverVisible && (
         <div
-          className="popover-scrim"
-          onClick={onClosePopover}
+          className={`popover-scrim${popoverOpen ? ' popover-scrim--open' : ''}`}
+          onClick={dismissPopover}
           role="dialog"
           aria-modal="true"
-          aria-label="Cashback explanation"
+          aria-labelledby="popover-title"
         >
-          <div className="popover-sheet" onClick={(e) => e.stopPropagation()}>
-            <button
-              className="popover-close-btn"
-              onClick={onClosePopover}
-              aria-label="Close"
-            >
-              <IconClose />
-            </button>
+          <div className="popover-panel" onClick={(e) => e.stopPropagation()}>
+            <div className="popover-sheet">
+              <button
+                className="popover-close-btn"
+                onClick={dismissPopover}
+                aria-label="Close"
+              >
+                <IconClose />
+              </button>
 
-            <div className="popover-art-frame">
-              <ChromaKeyVideo
-                src={popoverArtVideo}
-                playTrigger={showPopover}
-                className="popover-art"
-              />
-            </div>
+              <div className="popover-art-frame">
+                <ChromaKeyVideo
+                  src={popoverArtVideo}
+                  playTrigger={showPopover}
+                  className="popover-art"
+                  loopTailSeconds={1.05}
+                />
+              </div>
 
-            <div className="popover-body">
-              <h2 className="popover-title">
-                Sit back and enjoy $50 cashback at checkout
-              </h2>
+              <div className="popover-body">
+                <div className="popover-copy">
+                  <h2 id="popover-title" className="popover-title">
+                    Sit back and enjoy 20% off at checkout
+                  </h2>
+                  <p className="popover-subtitle">
+                    Stay on this browser when you book with Viator to keep your discount.
+                  </p>
+                </div>
+
+                <div className="popover-stats" role="group" aria-label="Offer details">
+                  <div className="popover-stat">
+                    <span className="popover-stat-label">Max discount</span>
+                    <span className="popover-stat-value">$20</span>
+                  </div>
+                  <div className="popover-stat-divider" aria-hidden="true" />
+                  <div className="popover-stat">
+                    <span className="popover-stat-label">Valid till</span>
+                    <span className="popover-stat-value">31 Dec 25</span>
+                  </div>
+                </div>
+              </div>
             </div>
 
             <div className="popover-cta-area">
-              <button className="cta-primary-btn" onClick={onClosePopover}>
+              <button className="cta-primary-btn cta-primary-btn--sweep" onClick={dismissPopover}>
                 Continue
               </button>
             </div>
@@ -534,9 +1006,9 @@ function WebviewScreen({
 
 export default function App() {
   const [appState, setAppState] = useState<AppState>('poi')
+  const [layoutOption, setLayoutOption] = useState<WebviewLayoutOption>(1)
   const [carouselIndex, setCarouselIndex] = useState(0)
   const [carouselShimmer, setCarouselShimmer] = useState(false)
-  const [loadRunKey, setLoadRunKey] = useState(0)
   const [webviewGlowKey, setWebviewGlowKey] = useState(0)
   const timersRef = useRef<ReturnType<typeof setTimeout>[]>([])
 
@@ -549,19 +1021,13 @@ export default function App() {
     clearTimers()
     setCarouselIndex(0)
     setCarouselShimmer(false)
-    setLoadRunKey((k) => k + 1)
+    setWebviewGlowKey((k) => k + 1)
     setAppState('loading')
 
-    // Carousel advance: line 0 → 1 at 1.1 s, then 1 → 2 at 2.4 s
     const t1 = setTimeout(() => setCarouselIndex(1), 1100)
     const t2 = setTimeout(() => setCarouselIndex(2), 2400)
-    // Shimmer on final line after scroll settles (2.4 s + 0.58 s transition)
     const tShimmer = setTimeout(() => setCarouselShimmer(true), 2980)
-    // Switch to webview at 4.2 s — after white sweep completes (~1.15 s)
-    const t3 = setTimeout(() => {
-      setWebviewGlowKey((k) => k + 1)
-      setAppState('webview')
-    }, 4200)
+    const t3 = setTimeout(() => setAppState('webview'), 4200)
 
     timersRef.current = [t1, t2, tShimmer, t3]
   }, [clearTimers])
@@ -573,26 +1039,37 @@ export default function App() {
 
   useEffect(() => () => clearTimers(), [clearTimers])
 
+  const showWebviewLayer = appState === 'loading' || appState === 'webview' || appState === 'popover'
+
   return (
     <div className="app-shell">
-      <div className="device-frame">
-        {appState === 'poi' && (
-          <PoiScreen onShelfTap={handleShelfTap} />
-        )}
+      <div className="demo-stage">
+        <div className="device-frame">
+          {appState === 'poi' && (
+            <PoiScreen onShelfTap={handleShelfTap} />
+          )}
 
-        {appState === 'loading' && (
-          <LoadingScreen carouselIndex={carouselIndex} runKey={loadRunKey} shimmer={carouselShimmer} />
-        )}
+          {showWebviewLayer && (
+            <WebviewScreen
+              layoutOption={layoutOption}
+              preloading={appState === 'loading'}
+              onCashbackTap={() => setAppState('popover')}
+              showPopover={appState === 'popover'}
+              onClosePopover={() => setAppState('webview')}
+              onClose={handleCloseWebview}
+              glowKey={webviewGlowKey}
+            />
+          )}
 
-        {(appState === 'webview' || appState === 'popover') && (
-          <WebviewScreen
-            onCashbackTap={() => setAppState('popover')}
-            showPopover={appState === 'popover'}
-            onClosePopover={() => setAppState('webview')}
-            onClose={handleCloseWebview}
-            glowKey={webviewGlowKey}
-          />
-        )}
+          {appState === 'loading' && (
+            <LoadingScreen carouselIndex={carouselIndex} shimmer={carouselShimmer} />
+          )}
+        </div>
+
+        <aside className="option-panel" aria-label="Layout options">
+          <p className="option-panel-label">Layout</p>
+          <OptionSegment value={layoutOption} onChange={setLayoutOption} />
+        </aside>
       </div>
     </div>
   )

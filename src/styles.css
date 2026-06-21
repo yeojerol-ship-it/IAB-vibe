@@ -43,6 +43,7 @@ img {
   --color-surface:   #ffffff;
   --color-grouped:   #f5f5f5;
   --color-separator: rgba(0, 0, 0, 0.06);
+  --color-border:    rgba(0, 0, 0, 0.12);
 
   /* Layout */
   --status-bar-h:  47px;
@@ -68,13 +69,14 @@ img {
   /* Easing */
   --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
   --ease-out-expo:  cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in:        cubic-bezier(0.7, 0, 0.84, 0);
 }
 
 /* === Document root ======================================================== */
 html, body {
   width: 100%;
   height: 100%;
-  overflow: hidden;
+  overflow: auto;
   background: #0f0f0f;
   font-family: var(--font);
   -webkit-font-smoothing: antialiased;
@@ -93,7 +95,80 @@ html, body {
   min-height: 100vh;
   min-height: 100dvh;
   background: radial-gradient(ellipse at 50% 60%, #1a0a10 0%, #0a0a0a 70%);
+  padding: var(--sp-8) var(--sp-4);
+}
+
+.demo-stage {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-8);
+  flex-shrink: 0;
+}
+
+.option-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  flex-shrink: 0;
   padding: var(--sp-4);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.option-panel-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.48);
+  line-height: 1.3;
+  letter-spacing: 0;
+}
+
+.option-segment {
+  display: flex;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  padding: 2px;
+  gap: 2px;
+}
+
+.option-segment-btn {
+  min-width: 88px;
+  height: 36px;
+  padding: 0 var(--sp-4);
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.65);
+  line-height: 1.3;
+  letter-spacing: 0;
+  transition: background 0.2s ease, color 0.2s ease;
+}
+
+.option-segment-btn--active {
+  background: rgba(255, 255, 255, 0.14);
+  color: #ffffff;
+}
+
+.option-segment-btn:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+.option-segment-btn:active {
+  opacity: 0.7;
+}
+
+@media (max-width: 760px) {
+  .demo-stage {
+    flex-direction: column;
+    gap: var(--sp-6);
+  }
+
+  .option-panel {
+    order: -1;
+    width: min(100%, var(--device-w));
+  }
 }
 
 .device-frame {
@@ -109,18 +184,18 @@ html, body {
     0 8px 32px rgba(0,0,0,0.6),
     0 32px 80px rgba(0,0,0,0.4),
     0 64px 120px rgba(0,0,0,0.25);
-  /* Scale down gracefully on very small viewports */
-  transform-origin: center center;
 }
 
 @media (max-height: 900px) {
-  .device-frame {
-    transform: scale(min(1, calc((100vh - 40px) / var(--device-h))));
+  .demo-stage {
+    transform: scale(min(1, calc((100vh - 80px) / var(--device-h))));
+    transform-origin: center center;
   }
 }
-@media (max-width: 430px) {
-  .device-frame {
-    transform: scale(min(1, calc((100vw - 24px) / var(--device-w))));
+@media (max-width: 520px) {
+  .demo-stage {
+    transform: scale(min(1, calc((100vw - 32px) / var(--device-w))));
+    transform-origin: center top;
   }
 }
 
@@ -163,6 +238,27 @@ html, body {
   z-index: 10;
 }
 
+.nav-bar--with-badge {
+  overflow: visible;
+  z-index: 12;
+}
+
+.nav-bar--scrolled {
+  border-bottom: 0.5px solid rgba(0, 0, 0, 0.12);
+}
+
+.nav-bar .nav-btn-left,
+.nav-bar .nav-btn-right {
+  transition: opacity 0.28s var(--ease-out-quart);
+}
+
+/* Option 1 — scroll into content: hide close + ellipses, keep center lockup */
+.nav-bar--compact:not(.nav-bar--with-badge) .nav-btn-left,
+.nav-bar--compact:not(.nav-bar--with-badge) .nav-btn-right {
+  opacity: 0;
+  pointer-events: none;
+}
+
 .nav-btn {
   width: 40px;
   height: 44px;
@@ -177,6 +273,16 @@ html, body {
 
 .nav-btn svg { width: 24px; height: 24px; }
 
+.nav-btn-spacer {
+  width: 40px;
+  height: 44px;
+  flex-shrink: 0;
+}
+
+.nav-bar--minimal .nav-center {
+  gap: 0;
+}
+
 .nav-center {
   position: absolute;
   left: 50%;
@@ -189,9 +295,25 @@ html, body {
   white-space: nowrap;
 }
 
-/* Logo PNG — 79×36 @2× retina, display at half size */
+.nav-center--with-badge {
+  top: 0;
+  padding-top: var(--sp-2);
+  gap: 2px;
+  transform: translateX(-50%) translateY(-2px);
+  transition:
+    top 0.32s var(--ease-out-quart),
+    padding-top 0.32s var(--ease-out-quart),
+    transform 0.32s var(--ease-out-quart);
+}
+
+.nav-center--with-badge .cashback-badge-wrap {
+  pointer-events: auto;
+  transition: transform 0.32s var(--ease-out-quart);
+}
+
+/* Logo PNG — 79×36 @2× retina; 16px display height balances 11px URL subtitle */
 .nav-logo-png {
-  height: 18px;
+  height: 16px;
   width: auto;
   display: block;
 }
@@ -200,6 +322,14 @@ html, body {
   font-size: 11px;
   font-weight: 600;
   color: var(--color-text-3);
+  line-height: 1.3;
+  letter-spacing: 0;
+}
+
+.nav-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--color-text-1);
   line-height: 1.3;
   letter-spacing: 0;
 }
@@ -283,6 +413,7 @@ html, body {
   justify-content: center;
   gap: 4px;
   padding: 0 var(--sp-4) 124px; /* offset upward toward center of content area */
+  transform: translateY(-4px);
 }
 
 /* Viator app icon — Figma 524:30427, 120×120 circle */
@@ -445,7 +576,70 @@ html, body {
 }
 
 /* === Webview screen ======================================================= */
+.loading-screen {
+  z-index: 20;
+}
+
+.webview-screen--preloading {
+  visibility: hidden;
+  pointer-events: none;
+}
+
 .webview-screen { background: var(--color-surface); }
+
+.webview-header-option2 {
+  flex-shrink: 0;
+  background: var(--color-surface);
+  position: relative;
+  z-index: 15;
+}
+
+/* Tall enough for Viator + 2px gap + cashback pill — opaque bg covers label on scroll */
+.webview-header-option2 .nav-center--with-badge {
+  padding-top: 6px;
+  transform: translateX(-50%) translateY(-4px);
+}
+
+.webview-header-option2 .nav-center--with-badge .nav-title {
+  height: 18px;
+  opacity: 1;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition:
+    height 0.32s var(--ease-out-quart),
+    opacity 0.32s var(--ease-out-quart);
+}
+
+.webview-header-option2 .nav-bar--with-badge {
+  height: auto;
+  min-height: 52px;
+  align-items: center;
+  transition: min-height 0.32s var(--ease-out-quart);
+}
+
+/* Scroll down — collapse to label-only: hide chrome, move pill up */
+.webview-header-option2--compact .nav-bar--with-badge {
+  min-height: var(--nav-bar-h);
+}
+
+.webview-header-option2--compact .nav-bar--with-badge .nav-btn-left,
+.webview-header-option2--compact .nav-bar--with-badge .nav-btn-right {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.webview-header-option2--compact .nav-bar--with-badge .nav-title {
+  height: 0;
+  opacity: 0;
+}
+
+.webview-header-option2--compact .nav-bar--with-badge .nav-center--with-badge {
+  top: 50%;
+  padding-top: 0;
+  transform: translate(-50%, -50%);
+}
 
 .webview-scroll-area {
   flex: 1;
@@ -459,6 +653,27 @@ html, body {
 }
 .webview-scroll-area::-webkit-scrollbar { display: none; }
 .webview-scroll-area { scrollbar-width: none; }
+
+.webview-scroll-area--live {
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-top: 0;
+}
+
+.webview-iframe-viewport {
+  width: 100%;
+  height: 2200px;
+  overflow: visible;
+}
+
+.webview-iframe {
+  width: 100%;
+  height: 2200px;
+  border: 0;
+  display: block;
+  background: var(--color-surface);
+  pointer-events: none;
+}
 
 @keyframes webviewRevealPop {
   from {
@@ -479,7 +694,7 @@ html, body {
   }
 }
 
-/* Crop wrapper — clean Viator screenshot, no baked-in browser chrome */
+/* Crop wrapper — third-party page screenshot, no baked-in browser chrome */
 .webview-img-crop {
   overflow: hidden;
 }
@@ -502,9 +717,11 @@ html, body {
   justify-content: space-between;
   padding: 0 var(--sp-4) 0 var(--sp-4);
   flex-shrink: 0;
-  /* Start fully visible (translate 0) — animate UP from below on entrance.
-     Using clip-path avoids the translateY overflow-clip race condition.  */
   animation: slideUpBar 0.52s var(--ease-out-expo) 0.28s both;
+}
+
+.webview-bottom-bar--center {
+  justify-content: center;
 }
 
 @keyframes slideUpBar {
@@ -542,8 +759,8 @@ html, body {
 .webview-icon-btn svg { width: 24px; height: 24px; }
 
 .webview-nav-icon {
-  width: 24px;
-  height: 24px;
+  width: 20px;
+  height: 20px;
   display: block;
 }
 
@@ -558,6 +775,12 @@ html, body {
   animation: badgePop 1.55s var(--ease-out-expo) 0.42s both;
 }
 
+.cashback-badge-wrap--nav {
+  transform: none;
+  transform-origin: center center;
+  animation: badgePopTop 1.55s var(--ease-out-expo) 0.42s both;
+}
+
 /* Pause → expand → hold through count-up → slower ease back to 1× */
 @keyframes badgePop {
   0%   { transform: translateY(-8px) scale(1);    }
@@ -565,6 +788,14 @@ html, body {
   28%  { transform: translateY(-8px) scale(1.06); }
   68%  { transform: translateY(-8px) scale(1.06); }
   100% { transform: translateY(-8px) scale(1);    }
+}
+
+@keyframes badgePopTop {
+  0%   { transform: scale(1);    }
+  15%  { transform: scale(1);    }
+  28%  { transform: scale(1.06); }
+  68%  { transform: scale(1.06); }
+  100% { transform: scale(1);    }
 }
 
 /* Stretches to pill bounds; stroke follows actual border path */
@@ -580,21 +811,17 @@ html, body {
 
 .cashback-glow-rect {
   fill: none;
-  stroke-width: 1;
+  stroke-width: 1.5;
   vector-effect: non-scaling-stroke;
-  stroke-linecap: butt;
-  /* Full perimeter — gradient rotation drives the 180° orbit */
+  stroke-linecap: round;
+  /* Full perimeter — rotating pink gradient creates the traveling arc */
   stroke-dasharray: 360 0;
-  opacity: 0;
-
-  animation: badgeFade 3s linear 0.3s 1 forwards;
+  opacity: 1;
+  transition: opacity 0.8s var(--ease-out-quart);
 }
 
-@keyframes badgeFade {
-  0%   { opacity: 0; }
-  22%  { opacity: 1; }
-  78%  { opacity: 1; }
-  100% { opacity: 0; }
+.cashback-glow-svg--softened .cashback-glow-rect {
+  opacity: 0;
 }
 
 /* The pill badge itself — border-radius: 100px matches Figma */
@@ -616,10 +843,33 @@ html, body {
   background: rgba(254, 44, 85, 0.12);
 }
 
+/* Option 2 — Figma 1052:20522: compact pill under partner title */
+.cashback-badge--nav {
+  gap: var(--sp-1);
+  padding: var(--sp-1) 6px var(--sp-1) 10px;
+  border-color: rgba(255, 72, 111, 0.01);
+}
+
+.cashback-badge--nav .cashback-copy {
+  gap: var(--sp-1);
+}
+
+.cashback-badge--nav .cashback-amount,
+.cashback-badge--nav .cashback-text {
+  font-size: 11px;
+  line-height: 1.3;
+  font-weight: 600;
+}
+
+.cashback-badge--nav .cashback-chevron {
+  width: 4px;
+  height: 8px;
+}
+
 .cashback-copy {
   display: inline-flex;
   align-items: center;
-  gap: 0;
+  gap: 4px;
   position: relative;
 }
 
@@ -656,7 +906,6 @@ html, body {
   font-size: 13px;
   font-weight: 400;
   color: var(--color-cashback-text);
-  margin-left: 3px;
 }
 
 .cashback-chevron {
@@ -666,44 +915,45 @@ html, body {
   display: block;
 }
 
-/* === Popover scrim & sheet ================================================ */
+/* === Popover scrim & sheet — Figma 1073:21329 ============================ */
 .popover-scrim {
   position: absolute;
   inset: 0;
-  background: rgba(0, 0, 0, 0.5);
+  background: rgba(0, 0, 0, 0.52);
   display: flex;
-  align-items: flex-end;
-  justify-content: center;
-  padding-bottom: 24px;
+  flex-direction: column;
+  justify-content: flex-end;
+  align-items: stretch;
   z-index: 100;
-  animation: scrimFadeIn 0.28s ease-out both;
 }
 
-@keyframes scrimFadeIn {
-  from { opacity: 0; }
-  to   { opacity: 1; }
+.popover-panel {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  transform: translateY(100%);
+  transition: transform 225ms var(--ease-in);
+}
+
+.popover-scrim--open .popover-panel {
+  transform: translateY(0);
+  transition: transform 300ms var(--ease-out-expo);
 }
 
 .popover-sheet {
-  width: 358px;
-  height: 372px;
+  width: 100%;
   background: #ffffff;
-  border-radius: 36px;
+  border-radius: 32px 32px 0 0;
   overflow: hidden;
   display: flex;
   flex-direction: column;
   position: relative;
-  animation: sheetSlideUp 0.42s var(--ease-out-quart) both;
-}
-
-@keyframes sheetSlideUp {
-  from { transform: translateY(52px); opacity: 0; }
-  to   { transform: translateY(0);    opacity: 1; }
+  box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.08);
 }
 
 .popover-close-btn {
   position: absolute;
-  top: 16px;
+  top: 12px;
   right: 13px;
   width: 28px;
   height: 28px;
@@ -714,7 +964,7 @@ html, body {
   justify-content: center;
   color: var(--color-text-1);
   z-index: 2;
-  transition: background 0.15s, transform 0.12s;
+  transition: background 0.15s, transform 0.15s;
 }
 .popover-close-btn:active {
   background: #d8d8d8;
@@ -722,11 +972,11 @@ html, body {
 }
 .popover-close-btn svg { width: 16px; height: 16px; }
 
-/* Illustration — Figma 799:27218 */
+/* Illustration — Figma 1073:21357 */
 .popover-art-frame {
   width: 167.87px;
   height: 173.85px;
-  margin: 31.15px auto 0;
+  margin: 44px auto 0;
   overflow: hidden;
   position: relative;
   flex-shrink: 0;
@@ -739,28 +989,94 @@ html, body {
   background: transparent;
 }
 
-/* Text body — Figma 799:27204 */
+/* Text body — Figma 1073:21358 */
 .popover-body {
-  padding: 0 var(--sp-8);
+  padding: 12px var(--sp-6) var(--sp-8);
   display: flex;
   flex-direction: column;
+  gap: var(--sp-6);
   text-align: center;
-  flex: 1;
   align-items: center;
+  width: 100%;
+}
+
+.popover-copy {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  max-width: 310px;
+  width: 100%;
 }
 
 .popover-title {
-  font-size: 24px;
+  font-size: 28px;
   font-weight: 700;
   color: var(--color-text-1);
   line-height: 1.25;
-  max-width: 308px;
+  letter-spacing: -0.02em;
+  text-wrap: balance;
 }
 
-/* CTA — Figma 796:27024 */
+.popover-subtitle {
+  font-size: 16px;
+  font-weight: 400;
+  color: var(--color-text-2);
+  line-height: 1.35;
+  max-width: 296px;
+  margin: 0 auto;
+  text-wrap: pretty;
+}
+
+/* Offer details — Figma 1073:21362 */
+.popover-stats {
+  width: 100%;
+  max-width: 344px;
+  height: 94px;
+  border: 1px solid var(--color-border);
+  border-radius: 20px;
+  background: rgba(0, 0, 0, 0.02);
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.popover-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 45px;
+}
+
+.popover-stat-label {
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--color-text-3);
+  line-height: 1.3;
+}
+
+.popover-stat-value {
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--color-text-1);
+  line-height: 1.25;
+  font-variant-numeric: tabular-nums;
+}
+
+.popover-stat-divider {
+  width: 1px;
+  height: 41.58px;
+  background: rgba(0, 0, 0, 0.08);
+  flex-shrink: 0;
+}
+
+/* CTA — Figma 1073:21373 */
 .popover-cta-area {
-  padding: var(--sp-3) var(--sp-7) var(--sp-7);
-  margin-top: auto;
+  padding: 0 var(--sp-6) var(--sp-7);
+  background: #ffffff;
 }
 
 .cta-primary-btn {
@@ -781,6 +1097,52 @@ html, body {
 .cta-primary-btn:active {
   transform: scale(0.97);
   background: #d9204a;
+}
+.cta-primary-btn:focus-visible {
+  outline: 2px solid #ffffff;
+  outline-offset: 2px;
+  box-shadow: 0 0 0 4px var(--color-primary);
+}
+
+/* Light sweep — repeats every 2s */
+.cta-primary-btn--sweep {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+}
+
+.cta-primary-btn--sweep::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 68%;
+  height: 100%;
+  background: linear-gradient(
+    100deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.06) 28%,
+    rgba(255, 255, 255, 0.28) 42%,
+    rgba(255, 255, 255, 0.38) 50%,
+    rgba(255, 255, 255, 0.28) 58%,
+    rgba(255, 255, 255, 0.06) 72%,
+    transparent 100%
+  );
+  transform: translateX(-160%);
+  animation: ctaLightSweep 5s var(--ease-out-quart) infinite;
+  pointer-events: none;
+}
+
+@keyframes ctaLightSweep {
+  0%, 43% {
+    transform: translateX(-160%);
+  }
+  91% {
+    transform: translateX(260%);
+  }
+  100% {
+    transform: translateX(260%);
+  }
 }
 
 /* === Screen-transition helpers ============================================ */
@@ -823,6 +1185,9 @@ html, body {
   .cashback-copy--twinkle {
     animation: none !important;
     filter: none !important;
+  }
+  .cashback-glow-svg {
+    display: none;
   }
 }
 
