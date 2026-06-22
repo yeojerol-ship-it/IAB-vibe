@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef, useCallback, memo, type ReactNode } from 'react'
 
 import poiDetailBg from './assets/poi-detail-bg.png'
-import viatorIcon from './assets/viator-icon.png'
-import webviewContent from './assets/webview-content.png'
+import tripIcon from './assets/trip-icon.png'
+import webviewContent from './assets/webview-content.webp'
 import popoverArtVideo from './assets/popover-art.mp4'
 import cashbackChevron from './assets/cashback-chevron.svg'
 import tikTokGoLogoMark from './assets/tiktok-go-logo-mark.png'
@@ -325,11 +325,11 @@ function PoiScreen({ onShelfTap }: { onShelfTap: () => void }) {
         />
 
         {/* Transparent tap zone over the Tickets shelf (with Buy buttons) in the image.
-            Image is 780×3688 native → 390×1844 CSS. Tickets section ≈ y 280–745 px. */}
+            Image is 780×1688 native → 390×844 CSS. Tickets section ≈ y 350–770 px. */}
         <button
           className="poi-shelf-zone"
           onClick={onShelfTap}
-          aria-label="Tap to buy tickets on Viator"
+          aria-label="Tap to buy tickets on Trip"
         />
       </div>
     </div>
@@ -341,7 +341,7 @@ function PoiScreen({ onShelfTap }: { onShelfTap: () => void }) {
 const CAROUSEL_LINES = [
   'Best deal found',
   '20% off at checkout',
-  'Opening Viator for you',
+  'Opening Trip for you',
 ]
 
 const SLOT_H = 32
@@ -366,7 +366,7 @@ function LoadingScreen({ carouselIndex, shimmer }: {
 
       <div className="loading-body">
         <div className="loading-icon-frame">
-          <img src={viatorIcon} alt="Viator" className="loading-icon-img" />
+          <img src={tripIcon} alt="Trip" className="loading-icon-img" />
         </div>
 
         <div className="carousel-window" aria-live="polite" aria-atomic="true">
@@ -403,189 +403,29 @@ function LoadingScreen({ carouselIndex, shimmer }: {
   )
 }
 
-// ─── Third-party page (live Trip.com + screenshot fallback) ─────────────────
-
-const TRIP_COM_PATH =
-  '/travel-guide/attraction/park-county/yellowstone-national-park-89744?curr=SGD&locale=en-SG&poiType=3&ext-searchpage=1'
-
-/** Proxied with iPhone UA so Trip.com serves H5 mobile HTML at 390px */
-const TRIP_COM_URL = `/trip-proxy${TRIP_COM_PATH}`
-
-function readMaxScrollTop(doc: Document, win: Window, bodyTopBaseline: number): number {
-  const root = doc.scrollingElement ?? doc.documentElement
-  let max = root.scrollTop
-  doc.querySelectorAll('*').forEach((el) => {
-    if (el instanceof HTMLElement && el.scrollTop > max) max = el.scrollTop
-  })
-  const bodyShift = Math.max(0, bodyTopBaseline - doc.body.getBoundingClientRect().top)
-  max = Math.max(max, bodyShift)
-  const vv = win.visualViewport
-  if (vv) max = Math.max(max, vv.pageTop, vv.offsetTop)
-  return max
-}
+// ─── Third-party page (Trip.com screenshot) ───────────────────────────────────
 
 function ThirdPartyFrame({
   onScroll,
   onWheelScroll,
+  revealed = false,
 }: {
   onScroll?: (scrollTop: number) => void
   onWheelScroll?: (deltaY: number) => void
+  revealed?: boolean
 }) {
-  const [useFallback, setUseFallback] = useState(false)
-  const iframeRef = useRef<HTMLIFrameElement>(null)
-  const detachScrollRef = useRef<(() => void) | null>(null)
-  const pollRafRef = useRef(0)
-  const rebindTimersRef = useRef<ReturnType<typeof setTimeout>[]>([])
-
-  const bindIframeScroll = useCallback(() => {
-    detachScrollRef.current?.()
-    detachScrollRef.current = null
-    cancelAnimationFrame(pollRafRef.current)
-
-    const iframe = iframeRef.current
-    if (!iframe) return
-
-    let doc: Document | null = null
-    try {
-      doc = iframe.contentDocument
-    } catch {
-      return
-    }
-    if (!doc) return
-    const win = iframe.contentWindow
-    if (!win) return
-
-    const bodyTopBaseline = doc.body.getBoundingClientRect().top
-    let lastPolled = -1
-
-    const emitScroll = (scrollTop: number) => {
-      onScroll?.(scrollTop)
-    }
-
-    const poll = () => {
-      const top = readMaxScrollTop(doc!, win, bodyTopBaseline)
-      if (top !== lastPolled) {
-        lastPolled = top
-        emitScroll(top)
-      }
-      pollRafRef.current = requestAnimationFrame(poll)
-    }
-
-    const handleScroll = (e: Event) => {
-      const top =
-        e.target instanceof Element
-          ? Math.max(e.target.scrollTop, readMaxScrollTop(doc!, win, bodyTopBaseline))
-          : readMaxScrollTop(doc!, win, bodyTopBaseline)
-      emitScroll(top)
-    }
-
-    const handleWheel = (e: WheelEvent) => {
-      onWheelScroll?.(e.deltaY)
-    }
-
-    let lastTouchY = 0
-    const handleTouchStart = (e: TouchEvent) => {
-      lastTouchY = e.touches[0]?.clientY ?? 0
-    }
-    const handleTouchMove = (e: TouchEvent) => {
-      const y = e.touches[0]?.clientY
-      if (y == null || !lastTouchY) return
-      onWheelScroll?.(lastTouchY - y)
-      lastTouchY = y
-    }
-    const handleTouchEnd = () => {
-      lastTouchY = 0
-    }
-
-    doc.addEventListener('scroll', handleScroll, { capture: true, passive: true })
-    doc.addEventListener('wheel', handleWheel, { capture: true, passive: true })
-    win.addEventListener('scroll', handleScroll, { capture: true, passive: true })
-    win.addEventListener('wheel', handleWheel, { capture: true, passive: true })
-    doc.addEventListener('touchstart', handleTouchStart, { capture: true, passive: true })
-    doc.addEventListener('touchmove', handleTouchMove, { capture: true, passive: true })
-    doc.addEventListener('touchend', handleTouchEnd, { capture: true, passive: true })
-    win.visualViewport?.addEventListener('scroll', handleScroll, { passive: true })
-    pollRafRef.current = requestAnimationFrame(poll)
-
-    detachScrollRef.current = () => {
-      cancelAnimationFrame(pollRafRef.current)
-      doc!.removeEventListener('scroll', handleScroll, { capture: true })
-      doc!.removeEventListener('wheel', handleWheel, { capture: true })
-      win.removeEventListener('scroll', handleScroll, { capture: true })
-      win.removeEventListener('wheel', handleWheel, { capture: true })
-      doc!.removeEventListener('touchstart', handleTouchStart, { capture: true })
-      doc!.removeEventListener('touchmove', handleTouchMove, { capture: true })
-      doc!.removeEventListener('touchend', handleTouchEnd, { capture: true })
-      win.visualViewport?.removeEventListener('scroll', handleScroll)
-    }
-  }, [onScroll, onWheelScroll])
-
-  const scheduleIframeScrollBind = useCallback(() => {
-    rebindTimersRef.current.forEach(clearTimeout)
-    rebindTimersRef.current = []
-    bindIframeScroll()
-    for (const delay of [400, 1200, 3000]) {
-      rebindTimersRef.current.push(setTimeout(bindIframeScroll, delay))
-    }
-  }, [bindIframeScroll])
-
-  useEffect(() => {
-    if (useFallback) return
-
-    const iframe = iframeRef.current
-    if (!iframe) return
-
-    const onLoad = () => scheduleIframeScrollBind()
-    iframe.addEventListener('load', onLoad)
-    if (iframe.contentDocument?.readyState === 'complete') {
-      scheduleIframeScrollBind()
-    }
-
-    return () => {
-      iframe.removeEventListener('load', onLoad)
-      rebindTimersRef.current.forEach(clearTimeout)
-      rebindTimersRef.current = []
-      detachScrollRef.current?.()
-      cancelAnimationFrame(pollRafRef.current)
-    }
-  }, [scheduleIframeScrollBind, useFallback])
-
-  useEffect(() => () => {
-    rebindTimersRef.current.forEach(clearTimeout)
-    detachScrollRef.current?.()
-    cancelAnimationFrame(pollRafRef.current)
-  }, [])
-
-  if (useFallback) {
-    return (
-      <div
-        className="webview-scroll-area"
-        onScroll={(e) => onScroll?.(e.currentTarget.scrollTop)}
-      >
-        <div className="webview-img-crop">
-          <img
-            src={webviewContent}
-            alt="Yellowstone National Park – Trip.com booking page"
-            className="webview-content-img"
-            draggable={false}
-          />
-        </div>
-      </div>
-    )
-  }
-
   return (
     <div
-      className="webview-scroll-area webview-scroll-area--live"
+      className={`webview-scroll-area${revealed ? ' webview-scroll-area--revealed' : ''}`}
+      onScroll={(e) => onScroll?.(e.currentTarget.scrollTop)}
       onWheel={(e) => onWheelScroll?.(e.deltaY)}
     >
-      <div className="webview-iframe-viewport">
-        <iframe
-          ref={iframeRef}
-          src={TRIP_COM_URL}
-          className="webview-iframe"
-          title="Trip.com – Yellowstone National Park"
-          onError={() => setUseFallback(true)}
+      <div className="webview-img-crop">
+        <img
+          src={webviewContent}
+          alt="Yellowstone National Park – Trip.com booking page"
+          className="webview-content-img"
+          draggable={false}
         />
       </div>
     </div>
@@ -782,7 +622,7 @@ function CashbackBadge({ glowKey, onClick, placement = 'bottom' }: CashbackBadge
 
 const POPOVER_EXIT_MS = 225
 
-function OptionSegment({
+function LayoutChipGroup({
   value,
   onChange,
 }: {
@@ -790,21 +630,19 @@ function OptionSegment({
   onChange: (value: WebviewLayoutOption) => void
 }) {
   return (
-    <div className="option-segment" role="tablist" aria-label="Webview layout">
+    <div className="layout-chip-group" role="group" aria-label="Webview layout">
       <button
         type="button"
-        role="tab"
-        aria-selected={value === 1}
-        className={`option-segment-btn${value === 1 ? ' option-segment-btn--active' : ''}`}
+        aria-pressed={value === 1}
+        className={`layout-chip${value === 1 ? ' layout-chip--selected' : ''}`}
         onClick={() => onChange(1)}
       >
         Option 1
       </button>
       <button
         type="button"
-        role="tab"
-        aria-selected={value === 2}
-        className={`option-segment-btn${value === 2 ? ' option-segment-btn--active' : ''}`}
+        aria-pressed={value === 2}
+        className={`layout-chip${value === 2 ? ' layout-chip--selected' : ''}`}
         onClick={() => onChange(2)}
       >
         Option 2
@@ -903,7 +741,7 @@ function WebviewScreen({
           <NavBar
             leftIcon="close"
             onLeftTap={onClose}
-            title="Viator"
+            title="Trip"
             showBrand={false}
             scrolled={navScrolled}
             compact={navCompact}
@@ -917,11 +755,15 @@ function WebviewScreen({
       ) : (
         <>
           <StatusBar />
-          <NavBar leftIcon="close" onLeftTap={onClose} subtitle="viator.com" scrolled={navScrolled} compact={navCompact} />
+          <NavBar leftIcon="close" onLeftTap={onClose} subtitle="trip.com" scrolled={navScrolled} compact={navCompact} />
         </>
       )}
 
-      <ThirdPartyFrame onScroll={handleContentScroll} onWheelScroll={handleContentWheel} />
+      <ThirdPartyFrame
+        revealed={!preloading}
+        onScroll={handleContentScroll}
+        onWheelScroll={handleContentWheel}
+      />
 
       <div className={`webview-bottom-bar${layoutOption === 2 ? ' webview-bottom-bar--center' : ''}`}>
         <div className="webview-nav-group">
@@ -972,7 +814,7 @@ function WebviewScreen({
                     Sit back and enjoy 20% off at checkout
                   </h2>
                   <p className="popover-subtitle">
-                    Stay on this browser when you book with Viator to keep your discount.
+                    Stay on this browser when you book with Trip to keep your discount.
                   </p>
                 </div>
 
@@ -1066,10 +908,7 @@ export default function App() {
           )}
         </div>
 
-        <aside className="option-panel" aria-label="Layout options">
-          <p className="option-panel-label">Layout</p>
-          <OptionSegment value={layoutOption} onChange={setLayoutOption} />
-        </aside>
+        <LayoutChipGroup value={layoutOption} onChange={setLayoutOption} />
       </div>
     </div>
   )

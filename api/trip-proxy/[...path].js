@@ -2,7 +2,7 @@ const TRIP_ORIGIN = 'https://sg.trip.com'
 const TRIP_MOBILE_UA =
   'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1'
 
-const NAV_GUARD = `<script>(function(){var P="/trip-proxy";function M(u){try{var s=String(u);if(s.indexOf("sg.trip.com")>-1)return s.replace(/https?:\\/\\/sg\\.trip\\.com/g,location.origin+P);if(s.indexOf("apigateway.ctripcorp.com")>-1)return s.replace(/https?:\\/\\/apigateway\\.ctripcorp\\.com/g,location.origin+P);if(s.indexOf("//sg.trip.com")===0)return s.replace("//sg.trip.com",location.origin+P);if(s.indexOf("/restapi/")===0)return P+s;if(s.indexOf("/api/soa2/")===0)return P+s.replace(/^\\/api\\/soa2/,"/restapi/soa2");}catch(e){}return u;}var a=location.assign.bind(location);location.assign=function(u){return a(M(u));};var r=location.replace.bind(location);location.replace=function(u){return r(M(u));};var f=window.fetch;window.fetch=function(i,o){if(typeof i==="string")i=M(i);else if(i&&i.url)i=new Request(M(i.url),i);return f.call(this,i,o)};var xo=XMLHttpRequest.prototype.open;XMLHttpRequest.prototype.open=function(m,u){arguments[1]=M(u);return xo.apply(this,arguments)};document.addEventListener("click",function(e){var n=e.target&&e.target.closest&&e.target.closest("a[href]");if(!n)return;var h=n.getAttribute("href");var m=M(h);if(m!==h){e.preventDefault();location.assign(m);}},true);})();</script>`
+const NAV_GUARD = `<script>(function(){var P="/trip-proxy",T="https://sg.trip.com";function M(u){try{var s=String(u);if(s.indexOf("sg.trip.com")>-1)return s.replace(/https?:\\/\\/sg\\.trip\\.com/g,location.origin+P);if(s.indexOf("apigateway.ctripcorp.com")>-1)return s.replace(/https?:\\/\\/apigateway\\.ctripcorp\\.com\\/restapi\\//g,"/restapi/");if(s.indexOf("//sg.trip.com")===0)return s.replace("//sg.trip.com",location.origin+P);}catch(e){}return u;}var a=location.assign.bind(location);location.assign=function(u){return a(M(u));};var r=location.replace.bind(location);location.replace=function(u){return r(M(u));};var f=window.fetch;window.fetch=function(i,o){o=o||{};if(o.credentials==null)o.credentials="same-origin";if(typeof i==="string"){i=M(i);}else if(i&&typeof i==="object"&&"url"in i){var u=M(i.url);if(u!==i.url)i=new Request(u,i);}return f.call(this,i,o)};var xo=XMLHttpRequest.prototype.open;XMLHttpRequest.prototype.open=function(m,u){arguments[1]=M(u);return xo.apply(this,arguments)};document.addEventListener("click",function(e){var n=e.target&&e.target.closest&&e.target.closest("a[href]");if(!n)return;var h=n.getAttribute("href");var m=M(h);if(m!==h){e.preventDefault();location.assign(m);}},true);})();</script>`
 
 function getProxyBase(req) {
   const proto =
@@ -21,12 +21,19 @@ function rewriteTripUrl(value, proxyBase) {
 }
 
 function rewriteHtml(html, proxyBase) {
+  const host = proxyBase.replace(/^https?:\/\//, '').replace(/\/trip-proxy$/, '')
   let out = rewriteTripUrl(html, proxyBase)
-    .replace(/(["'])\/restapi\//g, `$1${proxyBase}/restapi/`)
-    .replace(/(["'])\/api\/soa2\//g, `$1${proxyBase}/restapi/soa2/`)
-  if (out.includes('</head>')) {
+    .replace(/https:\/\/apigateway\.ctripcorp\.com\/restapi\//g, '/restapi/')
+    .replace(/http:\/\/apigateway\.ctripcorp\.com\/restapi\//g, '/restapi/')
+    .replace(new RegExp(`https?://${host.replace(/\./g, '\\.')}/trip-proxy/restapi/`, 'g'), '/restapi/')
+    .replace(/(["'])\/api\/soa2\//g, `$1/restapi/soa2/`)
+
+  if (out.includes('<head>')) {
+    out = out.replace('<head>', `<head>${NAV_GUARD}`)
+  } else if (out.includes('</head>')) {
     out = out.replace('</head>', `${NAV_GUARD}</head>`)
   }
+
   return out
 }
 
@@ -34,6 +41,14 @@ function normalizeSetCookie(cookie, host) {
   return cookie
     .replace(/;\s*Domain=[^;]*/gi, '')
     .replace(/;\s*Secure/gi, host?.startsWith('localhost') ? '' : '; Secure')
+}
+
+async function readRequestBody(req) {
+  const chunks = []
+  for await (const chunk of req) {
+    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk))
+  }
+  return Buffer.concat(chunks)
 }
 
 export default async function handler(req, res) {
@@ -62,42 +77,51 @@ export default async function handler(req, res) {
   requestHeaders.set('referer', `${TRIP_ORIGIN}/`)
   requestHeaders.set('accept-encoding', 'identity')
 
+  const requestBody = ['GET', 'HEAD'].includes(req.method)
+    ? undefined
+    : await readRequestBody(req)
+
   const upstream = await fetch(targetUrl, {
     method: req.method,
     headers: requestHeaders,
-    body: ['GET', 'HEAD'].includes(req.method) ? undefined : req,
+    body: requestBody,
     redirect: 'manual',
   })
 
   res.statusCode = upstream.status
 
+  const skipHeaders = new Set([
+    'content-encoding',
+    'content-length',
+    'transfer-encoding',
+    'content-security-policy',
+    'x-frame-options',
+    'strict-transport-security',
+    'set-cookie',
+  ])
+
   upstream.headers.forEach((value, key) => {
-    const lower = key.toLowerCase()
-    if (
-      [
-        'content-encoding',
-        'content-length',
-        'transfer-encoding',
-        'content-security-policy',
-        'x-frame-options',
-        'strict-transport-security',
-      ].includes(lower)
-    ) {
-      return
-    }
+    if (skipHeaders.has(key.toLowerCase())) return
 
-    if (lower === 'location') {
+    if (key.toLowerCase() === 'location') {
       res.setHeader('location', rewriteTripUrl(value, proxyBase))
-      return
-    }
-
-    if (lower === 'set-cookie') {
-      res.setHeader('set-cookie', normalizeSetCookie(value, req.headers.host))
       return
     }
 
     res.setHeader(key, value)
   })
+
+  const cookies = upstream.headers.getSetCookie?.() ?? []
+  if (cookies.length) {
+    for (const cookie of cookies) {
+      res.appendHeader('set-cookie', normalizeSetCookie(cookie, req.headers.host))
+    }
+  } else {
+    const single = upstream.headers.get('set-cookie')
+    if (single) {
+      res.setHeader('set-cookie', normalizeSetCookie(single, req.headers.host))
+    }
+  }
 
   const contentType = upstream.headers.get('content-type') || ''
   if (contentType.includes('text/html')) {

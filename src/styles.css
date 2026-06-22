@@ -100,75 +100,52 @@ html, body {
 
 .demo-stage {
   display: flex;
-  align-items: center;
-  gap: var(--sp-8);
-  flex-shrink: 0;
-}
-
-.option-panel {
-  display: flex;
   flex-direction: column;
-  gap: var(--sp-3);
+  align-items: center;
+  gap: var(--sp-6);
   flex-shrink: 0;
-  padding: var(--sp-4);
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
-.option-panel-label {
-  font-size: 13px;
-  font-weight: 600;
-  color: rgba(255, 255, 255, 0.48);
-  line-height: 1.3;
-  letter-spacing: 0;
-}
-
-.option-segment {
+.layout-chip-group {
   display: flex;
-  background: rgba(255, 255, 255, 0.08);
-  border-radius: 10px;
-  padding: 2px;
-  gap: 2px;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
 }
 
-.option-segment-btn {
-  min-width: 88px;
+.layout-chip {
   height: 36px;
   padding: 0 var(--sp-4);
-  border-radius: 8px;
+  border-radius: 100px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.04);
   font-size: 14px;
   font-weight: 600;
-  color: rgba(255, 255, 255, 0.65);
+  color: rgba(255, 255, 255, 0.62);
   line-height: 1.3;
   letter-spacing: 0;
-  transition: background 0.2s ease, color 0.2s ease;
+  transition:
+    background 0.2s ease,
+    border-color 0.2s ease,
+    color 0.2s ease,
+    box-shadow 0.2s ease;
 }
 
-.option-segment-btn--active {
-  background: rgba(255, 255, 255, 0.14);
+.layout-chip--selected {
+  border-color: rgba(254, 44, 85, 0.55);
+  background: rgba(254, 44, 85, 0.16);
   color: #ffffff;
+  box-shadow: 0 0 0 1px rgba(254, 44, 85, 0.12);
 }
 
-.option-segment-btn:focus-visible {
+.layout-chip:focus-visible {
   outline: 2px solid var(--color-primary);
   outline-offset: 2px;
 }
 
-.option-segment-btn:active {
-  opacity: 0.7;
-}
-
-@media (max-width: 760px) {
-  .demo-stage {
-    flex-direction: column;
-    gap: var(--sp-6);
-  }
-
-  .option-panel {
-    order: -1;
-    width: min(100%, var(--device-w));
-  }
+.layout-chip:active {
+  opacity: 0.75;
 }
 
 .device-frame {
@@ -388,14 +365,14 @@ html, body {
 }
 
 /* Transparent tap zone covering the Tickets shelf (with Buy buttons).
-   Image is 780×3688 native → 390×1844 CSS.
-   Tickets section (heading + 3 cards + "View all") ≈ y 280–745 px. */
+   Image is 780×1688 native → 390×844 CSS.
+   Tickets section (tabs + cards + Buy) ≈ y 350–770 px. */
 .poi-shelf-zone {
   position: absolute;
   left: 0;
   right: 0;
-  top: 280px;
-  height: 465px;
+  top: 350px;
+  height: 420px;
   background: transparent;
   border: none;
   cursor: pointer;
@@ -416,7 +393,7 @@ html, body {
   transform: translateY(-4px);
 }
 
-/* Viator app icon — Figma 524:30427, 120×120 circle */
+/* Trip logo — Figma 1141:29529, 120×120 circle */
 .loading-icon-frame {
   width: 120px;
   height: 120px;
@@ -438,13 +415,13 @@ html, body {
   }
 }
 
-/* Viator icon is 540×360 landscape – contain it inside the teal frame */
+/* Trip.com logo with built-in blue circle */
 .loading-icon-img {
   width: 100%;
   height: 100%;
-  object-fit: contain;
+  object-fit: cover;
   object-position: center;
-  background: #186a68;
+  background: transparent;
 }
 
 /* === Carousel ============================================================= */
@@ -460,7 +437,7 @@ html, body {
   background: rgba(255, 255, 255, 0.08);
   backdrop-filter: blur(2px);
   -webkit-backdrop-filter: blur(2px);
-  /* Stronger top fade — outgoing lines vanish before the Viator logo */
+  /* Stronger top fade — outgoing lines vanish before the Trip logo */
   mask-image: linear-gradient(
     to bottom,
     transparent  0%,
@@ -594,13 +571,14 @@ html, body {
   z-index: 15;
 }
 
-/* Tall enough for Viator + 2px gap + cashback pill — opaque bg covers label on scroll */
+/* Tall enough for Trip + 2px gap + cashback pill — opaque bg covers label on scroll */
 .webview-header-option2 .nav-center--with-badge {
   padding-top: 6px;
   transform: translateX(-50%) translateY(-4px);
 }
 
 .webview-header-option2 .nav-center--with-badge .nav-title {
+  font-size: 14px;
   height: 18px;
   opacity: 1;
   overflow: hidden;
@@ -649,45 +627,48 @@ html, body {
   overscroll-behavior-y: contain;
   padding-top: 4px; /* Figma 524:30358 gap, reduced 8px */
   transform-origin: top center;
+  opacity: 0;
+  transform: translateY(16px) scale(0.96);
+}
+
+.webview-scroll-area--revealed {
   animation: webviewRevealPop 0.85s var(--ease-out-expo) 0.06s both;
 }
 .webview-scroll-area::-webkit-scrollbar { display: none; }
 .webview-scroll-area { scrollbar-width: none; }
 
 .webview-scroll-area--live {
-  overflow-y: auto;
-  overflow-x: hidden;
+  overflow: hidden;
   padding-top: 0;
 }
 
 .webview-iframe-viewport {
   width: 100%;
-  height: 2200px;
-  overflow: visible;
+  height: 100%;
 }
 
 .webview-iframe {
   width: 100%;
-  height: 2200px;
+  height: 100%;
   border: 0;
   display: block;
   background: var(--color-surface);
-  pointer-events: none;
 }
 
 @keyframes webviewRevealPop {
   from {
     opacity: 0;
-    transform: translateY(16px);
+    transform: translateY(16px) scale(0.96);
   }
   to {
     opacity: 1;
-    transform: translateY(0);
+    transform: translateY(0) scale(1);
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .webview-scroll-area {
+  .webview-scroll-area,
+  .webview-scroll-area--revealed {
     animation: none;
     opacity: 1;
     transform: none;
@@ -699,12 +680,15 @@ html, body {
   overflow: hidden;
 }
 
+/* 780px-wide 2× asset — displayed at 390px for retina sharpness */
 .webview-content-img {
   width: 100%;
   height: auto;
   display: block;
   user-select: none;
   -webkit-user-drag: none;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
 }
 
 /* === Webview bottom bar =================================================== */
